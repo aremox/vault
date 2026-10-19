@@ -2,6 +2,10 @@
 
 Bienvenido a la guía paso a paso desde cero. Este documento está escrito para que **cualquier persona** (aunque nunca haya tocado HashiCorp Vault, Ansible o HikariCP) entienda exactamente **qué problema resuelve este piloto, cómo funciona cada pieza por dentro y cómo operarlo sin ninguna duda**.
 
+> [!IMPORTANT]
+> 🛠️ **¿Buscas la lista de comandos 1 por 1 para ir ejecutándolos paso a paso hasta tener todo montado?**
+> 👉 **[Abre aquí la Guía de Comandos 1 por 1 (`docs/PASO-A-PASO-COMANDOS.md`)](PASO-A-PASO-COMANDOS.md)** (incluye tanto el **Recorrido A** levantando Docker contenedor a contenedor como el **Recorrido B** con los **22 comandos internos reales** de PostgreSQL, Vault, Ansible y Spring Boot explicados uno por uno).
+
 ---
 
 ## Índice de Contenidos
@@ -210,6 +214,9 @@ stateDiagram-v2
 ---
 
 ## 5. Puesta en Marcha Paso a Paso (De Cero a Funcionando)
+
+> 💡 **¿Quieres ejecutar los comandos 1 por 1 en lugar de lanzarlo todo de golpe?**
+> Ve a **[`docs/PASO-A-PASO-COMANDOS.md`](PASO-A-PASO-COMANDOS.md)** para seguir las fichas numeradas comando a comando (12 pasos con Docker o los 22 comandos internos destripados).
 
 ### Paso 5.1 — Requisitos previos
 Solo necesitas tener instalado en tu ordenador:

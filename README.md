@@ -1,7 +1,8 @@
 # Piloto HashiCorp Vault + Ansible + Spring Boot 3 + PostgreSQL 16
 
 > **¿Primera vez viendo este proyecto?**
-> 👉 **[Lee aquí el Manual Completo "Para Dummies" (`docs/HOWTO-DUMMIES.md`)](docs/HOWTO-DUMMIES.md)** con analogías sencillas, gráficos paso a paso, guía de la consola web y recetario de comandos sin dar nada por sentado.
+> - 👉 **[Manual Completo "Para Dummies" (`docs/HOWTO-DUMMIES.md`)](docs/HOWTO-DUMMIES.md)**: Analogías sencillas, diagramas Mermaid de arquitectura, guía de la consola web y preguntas frecuentes.
+> - 🛠️ **[Guía de Comandos 1 por 1 "Para Dummies" (`docs/PASO-A-PASO-COMANDOS.md`)](docs/PASO-A-PASO-COMANDOS.md)**: Todos los comandos numerados 1 por 1 hasta tener todo montado (tanto el Recorrido A con Docker contenedor a contenedor como el Recorrido B con los 22 comandos internos reales de PostgreSQL, Vault, Ansible y Spring Boot).
 
 ---
 
@@ -48,6 +49,8 @@ flowchart LR
 
 ## Arranque Rápido (3 pasos)
 
+> 💡 ¿Prefieres levantar cada máquina **1 por 1** o ejecutar manualmente los **22 comandos internos** de configuración? Sigue la **[Guía de Comandos 1 por 1 (`docs/PASO-A-PASO-COMANDOS.md`)](docs/PASO-A-PASO-COMANDOS.md)**.
+
 ```bash
 # 1. Construir y levantar las 4 VMs en segundo plano
 docker compose up -d --build
@@ -69,7 +72,8 @@ vault/
 ├── docker-compose.yml                  # Topologia de 4 contenedores VM en 172.29.0.0/24
 ├── README.md                           # Resumen ejecutivo y arranque rapido
 ├── docs/
-│   └── HOWTO-DUMMIES.md                # Manual paso a paso desde cero con diagramas Mermaid
+│   ├── HOWTO-DUMMIES.md                # Manual conceptual e interactivo con diagramas Mermaid
+│   └── PASO-A-PASO-COMANDOS.md         # Guia de comandos 1 por 1 (Docker paso a paso + 22 cmds internos)
 ├── infra/
 │   ├── db/
 │   │   └── init.sql                    # Esquema PostgreSQL, tabla de auditoria y roles base
@@ -104,14 +108,17 @@ vault/
 └── specs/
     ├── 01-vault-rotacion-claves-bbdd.md        # SPEC 01 (Implemented)
     ├── 02-web-animada-arquitectura-vault.md    # SPEC 02 (Implemented)
-    └── 03-readme-howto-dummies.md              # SPEC 03 (Implemented)
+    ├── 03-readme-howto-dummies.md              # SPEC 03 (Implemented)
+    └── 04-guia-comandos-paso-a-paso-dummies.md # SPEC 04 (Implemented)
 ```
 
 ---
 
 ## Documentación y Especificaciones
 
+- 🛠️ **[Guía de Comandos 1 por 1 "Para Dummies" (`docs/PASO-A-PASO-COMANDOS.md`)](docs/PASO-A-PASO-COMANDOS.md)**
 - 📘 **[Manual Completo "Para Dummies" (`docs/HOWTO-DUMMIES.md`)](docs/HOWTO-DUMMIES.md)**
 - 📋 **[SPEC 01 — Piloto de negociación y rotación de claves BBDD](specs/01-vault-rotacion-claves-bbdd.md)**
 - 🖥️ **[SPEC 02 — Consola web animada de arquitectura y rotación en vivo](specs/02-web-animada-arquitectura-vault.md)**
 - 📖 **[SPEC 03 — Documentación README y guía How-To para Dummies](specs/03-readme-howto-dummies.md)**
+- 🔢 **[SPEC 04 — Guía de comandos 1 por 1 para Dummies](specs/04-guia-comandos-paso-a-paso-dummies.md)**
