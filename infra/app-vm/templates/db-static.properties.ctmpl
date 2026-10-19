@@ -1,0 +1,5 @@
+{{- with secret "database/static-creds/postgres-static-role" -}}
+spring.datasource.static.jdbc-url=jdbc:postgresql://172.29.0.20:5432/pilotdb
+spring.datasource.static.username={{ .Data.username }}
+spring.datasource.static.password={{ .Data.password }}
+{{- end }}

@@ -1,0 +1,109 @@
+services:
+  vm-db:
+    image: postgres:16-alpine
+    container_name: vm-db
+    hostname: vm-db
+    environment:
+      POSTGRES_DB: pilotdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_root_pwd
+    ports:
+      - "15432:5432"
+    volumes:
+      - ./infra/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - db-data:/var/lib/postgresql/data
+    networks:
+      vault-pilot-net:
+        ipv4_address: 172.29.0.20
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pilotdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  vm-vault:
+    image: hashicorp/vault:1.17
+    container_name: vm-vault
+    hostname: vm-vault
+    depends_on:
+      vm-db:
+        condition: service_healthy
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+    ports:
+      - "18200:8200"
+    volumes:
+      - ./infra/vault/config.hcl:/vault/config/config.hcl:ro
+      - ./infra/vault/policies:/vault/policies:ro
+      - ./infra/vault/scripts/bootstrap-vault.sh:/usr/local/bin/bootstrap-vault.sh:ro
+      - vault-file-data:/vault/file
+      - vault-bootstrap-data:/vault/bootstrap
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /usr/local/bin/bootstrap-vault.sh > /tmp/bootstrap-vault.sh && chmod +x /tmp/bootstrap-vault.sh && exec /bin/sh /tmp/bootstrap-vault.sh"]
+    networks:
+      vault-pilot-net:
+        ipv4_address: 172.29.0.10
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /vault/bootstrap/ready && vault status -format=json | grep -q '\"sealed\": false'"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  vm-app:
+    build:
+      context: .
+      dockerfile: infra/app-vm/Dockerfile
+    container_name: vm-app
+    hostname: vm-app
+    depends_on:
+      vm-vault:
+        condition: service_healthy
+    volumes:
+      - ./app:/opt/app-src
+    networks:
+      vault-pilot-net:
+        ipv4_address: 172.29.0.30
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  vm-ansible:
+    build:
+      context: .
+      dockerfile: infra/ansible/Dockerfile
+    container_name: vm-ansible
+    hostname: vm-ansible
+    depends_on:
+      vm-vault:
+        condition: service_healthy
+      vm-app:
+        condition: service_healthy
+    volumes:
+      - vault-bootstrap-data:/vault/bootstrap:ro
+      - ./infra/ansible/inventory.ini:/etc/ansible/inventory.ini:ro
+      - ./infra/ansible/playbooks:/etc/ansible/playbooks:ro
+    networks:
+      vault-pilot-net:
+        ipv4_address: 172.29.0.40
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/ansible-done"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  db-data:
+  vault-file-data:
+  vault-bootstrap-data:
+
+networks:
+  vault-pilot-net:
+    name: vault-pilot-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+          gateway: 172.29.0.1

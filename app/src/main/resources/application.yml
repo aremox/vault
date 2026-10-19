@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: vault-rotation-pilot
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+
+pilot:
+  secrets:
+    dynamic-file: /run/secrets/db-dynamic.properties
+    static-file: /run/secrets/db-static.properties
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  level:
+    root: INFO
+    com.zaxxer.hikari: WARN
+    com.pilot.vault: INFO

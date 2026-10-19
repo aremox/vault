@@ -1,0 +1,106 @@
+---
+- name: Negociar role_id + secret_id en Vault y desplegarlos por SSH en vm-app
+  hosts: app_vms
+  gather_facts: false
+  vars:
+    vault_addr: "http://172.29.0.10:8200"
+    approle_name: "spring-app-role"
+    bootstrap_token_path: "/vault/bootstrap/root.token"
+
+  tasks:
+    - name: Esperar a que el fichero root.token de bootstrap exista en vm-ansible
+      ansible.builtin.wait_for:
+        path: "{{ bootstrap_token_path }}"
+        state: present
+        timeout: 60
+      delegate_to: localhost
+
+    - name: Leer token de aprovisionamiento de Vault
+      ansible.builtin.slurp:
+        src: "{{ bootstrap_token_path }}"
+      register: vault_token_raw
+      delegate_to: localhost
+
+    - name: Definir hecho vault_token
+      ansible.builtin.set_fact:
+        vault_token: "{{ vault_token_raw.content | b64decode | trim }}"
+
+    - name: Verificar que vm-vault responde initialized=true y sealed=false
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/sys/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: vault_health
+      until: vault_health.status == 200 and (vault_health.json.initialized | default(false)) and not (vault_health.json.sealed | default(true))
+      retries: 20
+      delay: 2
+      delegate_to: localhost
+
+    - name: Obtener role_id del AppRole {{ approle_name }} desde Vault API
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/auth/approle/role/{{ approle_name }}/role-id"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+        status_code: 200
+        return_content: true
+      register: role_id_resp
+      delegate_to: localhost
+
+    - name: Generar nuevo secret_id para {{ approle_name }} desde Vault API
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/auth/approle/role/{{ approle_name }}/secret-id"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+        status_code: 200
+        return_content: true
+      register: secret_id_resp
+      delegate_to: localhost
+
+    - name: Esperar conexion SSH disponible en vm-app (172.29.0.30:22)
+      ansible.builtin.wait_for_connection:
+        timeout: 60
+
+    - name: Asegurar directorios /etc/vault.d y /run/secrets en vm-app
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - /etc/vault.d
+        - /run/secrets
+
+    - name: Desplegar /etc/vault.d/role_id con permisos 0600 en vm-app
+      ansible.builtin.copy:
+        content: "{{ role_id_resp.json.data.role_id }}"
+        dest: /etc/vault.d/role_id
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Desplegar /etc/vault.d/secret_id con permisos 0600 en vm-app
+      ansible.builtin.copy:
+        content: "{{ secret_id_resp.json.data.secret_id }}"
+        dest: /etc/vault.d/secret_id
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Iniciar o recargar demonio vault-agent en vm-app
+      ansible.builtin.shell: |
+        pkill -x vault || true
+        nohup vault agent -config=/etc/vault.d/vault-agent.hcl >/var/log/vault-agent/agent.log 2>&1 &
+      changed_when: true
+
+    - name: Esperar a que vault-agent renderice credenciales dinamicas y estaticas en /run/secrets
+      ansible.builtin.wait_for:
+        path: "{{ item }}"
+        state: present
+        timeout: 30
+      loop:
+        - /run/secrets/db-dynamic.properties
+        - /run/secrets/db-static.properties

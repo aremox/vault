@@ -1,0 +1,5 @@
+{{- with secret "database/creds/postgres-dynamic-role" -}}
+spring.datasource.dynamic.jdbc-url=jdbc:postgresql://172.29.0.20:5432/pilotdb
+spring.datasource.dynamic.username={{ .Data.username }}
+spring.datasource.dynamic.password={{ .Data.password }}
+{{- end }}
