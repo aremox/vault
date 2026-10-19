@@ -15,17 +15,34 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 public class RotatableDataSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(RotatableDataSourceManager.class);
+
+    public record CredentialTelemetry(
+            String mode,
+            String filePath,
+            String jdbcUrl,
+            String username,
+            String previousUsername,
+            String password,
+            String passwordHash,
+            String previousPasswordHash,
+            int rotationCount,
+            String lastRotatedAt
+    ) {}
 
     @Value("${pilot.secrets.dynamic-file:/run/secrets/db-dynamic.properties}")
     private String dynamicFilePath;
@@ -35,6 +52,12 @@ public class RotatableDataSourceManager {
 
     private final AtomicReference<HikariDataSource> dynamicPoolRef = new AtomicReference<>();
     private final AtomicReference<HikariDataSource> staticPoolRef = new AtomicReference<>();
+
+    private final AtomicReference<CredentialTelemetry> dynamicTelemetryRef = new AtomicReference<>();
+    private final AtomicReference<CredentialTelemetry> staticTelemetryRef = new AtomicReference<>();
+
+    private final AtomicInteger dynamicRotationCount = new AtomicInteger(0);
+    private final AtomicInteger staticRotationCount = new AtomicInteger(0);
 
     private volatile String lastDynamicHash = "";
     private volatile String lastStaticHash = "";
@@ -53,6 +76,8 @@ public class RotatableDataSourceManager {
                 "spring.datasource.dynamic",
                 lastDynamicHash,
                 dynamicPoolRef,
+                dynamicTelemetryRef,
+                dynamicRotationCount,
                 newHash -> this.lastDynamicHash = newHash
         );
         reloadIfChanged(
@@ -61,6 +86,8 @@ public class RotatableDataSourceManager {
                 "spring.datasource.static",
                 lastStaticHash,
                 staticPoolRef,
+                staticTelemetryRef,
+                staticRotationCount,
                 newHash -> this.lastStaticHash = newHash
         );
     }
@@ -71,6 +98,8 @@ public class RotatableDataSourceManager {
             String prefix,
             String previousHash,
             AtomicReference<HikariDataSource> poolRef,
+            AtomicReference<CredentialTelemetry> telemetryRef,
+            AtomicInteger rotationCounter,
             java.util.function.Consumer<String> hashUpdater
     ) {
         try {
@@ -101,11 +130,18 @@ public class RotatableDataSourceManager {
                 return;
             }
 
-            log.info("[ROTATION-DETECTED] Modo={} | Usuario={} | HashCredencial={} -> Recreando pool HikariCP...",
-                    mode, username, currentHash.substring(0, 12));
+            String pwdShortHash = sha256(password).substring(0, 12);
+            CredentialTelemetry prev = telemetryRef.get();
+            String prevUsername = prev != null ? prev.username() : null;
+            String prevPwdHash = prev != null ? prev.passwordHash() : null;
+            int rotCount = rotationCounter.incrementAndGet();
+            String nowIso = Instant.now().toString();
+
+            log.info("[ROTATION-DETECTED] Modo={} | Usuario={} | HashCredencial={} | Rotacion=#{} -> Recreando pool HikariCP...",
+                    mode, username, pwdShortHash, rotCount);
 
             HikariConfig cfg = new HikariConfig();
-            cfg.setPoolName("HikariPool-" + mode);
+            cfg.setPoolName("HikariPool-" + mode + "-" + rotCount);
             cfg.setJdbcUrl(jdbcUrl);
             cfg.setUsername(username);
             cfg.setPassword(password);
@@ -117,6 +153,19 @@ public class RotatableDataSourceManager {
             HikariDataSource newPool = new HikariDataSource(cfg);
             HikariDataSource oldPool = poolRef.getAndSet(newPool);
             hashUpdater.accept(currentHash);
+
+            telemetryRef.set(new CredentialTelemetry(
+                    mode,
+                    filePath.toString(),
+                    jdbcUrl,
+                    username,
+                    prevUsername,
+                    password,
+                    pwdShortHash,
+                    prevPwdHash,
+                    rotCount,
+                    nowIso
+            ));
 
             if (oldPool != null) {
                 closerExecutor.schedule(() -> {
@@ -139,6 +188,35 @@ public class RotatableDataSourceManager {
 
     public DataSource getStaticDataSource() {
         return staticPoolRef.get();
+    }
+
+    public CredentialTelemetry getDynamicTelemetry() {
+        return dynamicTelemetryRef.get();
+    }
+
+    public CredentialTelemetry getStaticTelemetry() {
+        return staticTelemetryRef.get();
+    }
+
+    public Map<String, Object> buildCredentialMap(CredentialTelemetry t, Integer currentPid, Integer previousPid) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        if (t == null) {
+            map.put("status", "INITIALIZING");
+            return map;
+        }
+        map.put("mode", t.mode());
+        map.put("filePath", t.filePath());
+        map.put("jdbcUrl", t.jdbcUrl());
+        map.put("username", t.username());
+        map.put("previousUsername", t.previousUsername());
+        map.put("password", t.password());
+        map.put("passwordHash", t.passwordHash());
+        map.put("previousPasswordHash", t.previousPasswordHash());
+        map.put("currentBackendPid", currentPid);
+        map.put("previousBackendPid", previousPid);
+        map.put("rotationCount", t.rotationCount());
+        map.put("lastRotatedAt", t.lastRotatedAt());
+        return map;
     }
 
     private String sha256(String input) throws Exception {

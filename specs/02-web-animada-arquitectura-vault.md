@@ -1,6 +1,6 @@
 # SPEC 02 — Consola web animada de arquitectura, artefactos y rotación de claves en vivo
 
-> **Status:** Approved
+> **Status:** Implemented
 > **Depends on:** SPEC 01
 > **Date:** 2026-10-19
 > **Objective:** Incorporar en la aplicación Spring Boot (`vm-app`) una consola web interactiva con animaciones SVG de movimiento que visualice en tiempo real la topología de contenedores VM, el intercambio de artefactos (`role_id`, `secret_id`, tokens, leases, ficheros `.properties`) y la rotación de claves dinámicas y estáticas contra PostgreSQL.
@@ -123,13 +123,13 @@ En `SPEC 01` la validación del piloto se realiza por línea de comandos (`scrip
 
 ## Criterios de aceptación
 
-- [ ] Al acceder a `http://localhost:18080/`, el contenedor `vm-app` sirve la consola web con código HTTP `200`.
-- [ ] El endpoint `GET http://localhost:18080/api/pilot/state` devuelve HTTP `200` con el estado de los 4 nodos (`172.29.0.10`, `172.29.0.20`, `172.29.0.30`, `172.29.0.40`), metadatos AppRole (`roleId`, permisos `0600`), credenciales `dynamic` y `static`, sesiones en `pg_stat_activity` e historial de `connection_audit_log`.
-- [ ] La interfaz web renderiza el diagrama SVG de arquitectura con los 4 contenedores VM y animaciones de movimiento continuas y por evento para el flujo de artefactos (`role_id`, `secret_id`, token, `.properties` y queries SQL).
-- [ ] Las tarjetas de credenciales muestran el `username`, el hash SHA-256, el `pg_backend_pid` y permiten alternar entre contraseña oculta (`••••••••`) y contraseña en claro mediante un botón mostrar/ocultar.
-- [ ] Al pulsar "Forzar Rotación Estática" (`POST /api/pilot/rotate/static`), la contraseña y el hash de `app_static_user` cambian en la interfaz y se dispara la animación visual de rotación y recarga del pool `HikariCP`.
-- [ ] Al pulsar "Forzar Rotación Dinámica" (`POST /api/pilot/rotate/dynamic`), se genera un nuevo usuario efímero `v-approle-postgres-...`, se actualiza la tarjeta dinámica en la web y cambia el `pg_backend_pid` en PostgreSQL sin errores.
-- [ ] El script `scripts/verify-ui.sh` finaliza con código de salida `0`.
+- [x] Al acceder a `http://localhost:18080/`, el contenedor `vm-app` sirve la consola web con código HTTP `200`.
+- [x] El endpoint `GET http://localhost:18080/api/pilot/state` devuelve HTTP `200` con el estado de los 4 nodos (`172.29.0.10`, `172.29.0.20`, `172.29.0.30`, `172.29.0.40`), metadatos AppRole (`roleId`, permisos `0600`), credenciales `dynamic` y `static`, sesiones en `pg_stat_activity` e historial de `connection_audit_log`.
+- [x] La interfaz web renderiza el diagrama SVG de arquitectura con los 4 contenedores VM y animaciones de movimiento continuas y por evento para el flujo de artefactos (`role_id`, `secret_id`, token, `.properties` y queries SQL).
+- [x] Las tarjetas de credenciales muestran el `username`, el hash SHA-256, el `pg_backend_pid` y permiten alternar entre contraseña oculta (`••••••••`) y contraseña en claro mediante un botón mostrar/ocultar.
+- [x] Al pulsar "Forzar Rotación Estática" (`POST /api/pilot/rotate/static`), la contraseña y el hash de `app_static_user` cambian en la interfaz y se dispara la animación visual de rotación y recarga del pool `HikariCP`.
+- [x] Al pulsar "Forzar Rotación Dinámica" (`POST /api/pilot/rotate/dynamic`), se genera un nuevo usuario efímero `v-approle-postgres-...`, se actualiza la tarjeta dinámica en la web y cambia el `pg_backend_pid` en PostgreSQL sin errores.
+- [x] El script `scripts/verify-ui.sh` termina con código de salida `0`.
 
 ---
 

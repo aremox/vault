@@ -1,3 +1,6 @@
+server:
+  port: 8080
+
 spring:
   application:
     name: vault-rotation-pilot
@@ -9,6 +12,9 @@ pilot:
   secrets:
     dynamic-file: /run/secrets/db-dynamic.properties
     static-file: /run/secrets/db-static.properties
+  vault:
+    address: http://172.29.0.10:8200
+    bootstrap-token-file: /vault/bootstrap/root.token
 
 logging:
   pattern:
