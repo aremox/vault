@@ -59,8 +59,11 @@ services:
     depends_on:
       vm-vault:
         condition: service_healthy
+    ports:
+      - "18080:8080"
     volumes:
       - ./app:/opt/app-src
+      - vault-bootstrap-data:/vault/bootstrap:ro
     networks:
       vault-pilot-net:
         ipv4_address: 172.29.0.30
