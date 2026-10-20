@@ -4,9 +4,17 @@ server:
 spring:
   application:
     name: vault-rotation-pilot
+  config:
+    import: "optional:configserver:http://172.29.0.60:8888"
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh,env
 
 pilot:
   secrets:
@@ -15,6 +23,13 @@ pilot:
   vault:
     address: http://172.29.0.10:8200
     bootstrap-token-file: /vault/bootstrap/root.token
+  gitea:
+    internal-url: http://172.29.0.50:3000
+    public-url: http://localhost:13000
+    owner: pilot-admin
+    repo: pilot-config
+  config-server:
+    url: http://172.29.0.60:8888
 
 logging:
   pattern:

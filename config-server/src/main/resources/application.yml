@@ -1,0 +1,38 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: vault-config-server
+  config:
+    import: "optional:file:/run/secrets/git-credentials.properties"
+  profiles:
+    active: git,vault
+  cloud:
+    config:
+      server:
+        git:
+          uri: http://172.29.0.50:3000/pilot-admin/pilot-config.git
+          default-label: main
+          username: ${git.username:pilot-admin}
+          password: ${git.password:gitea_secret_password_2026}
+          clone-on-start: true
+          force-pull: true
+          refresh-rate: 0
+          order: 2
+        vault:
+          host: 172.29.0.10
+          port: 8200
+          scheme: http
+          backend: secret
+          kv-version: 2
+          default-key: vault-rotation-pilot
+          authentication: TOKEN
+          token: ${vault.token:root}
+          order: 1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,env

@@ -824,6 +824,81 @@ Con todo montado, ejecuta estos 3 últimos comandos para ver con tus propios ojo
 
 ---
 
+## 🌐 Fase 7 (Spec 05): Servidor Git Gitea (`vm-git`) + Spring Cloud Config Server (`vm-config-server`) + Vault KV v2
+
+Con la incorporación de las máquinas 5 y 6 (`vm-git` en `172.29.0.50` y `vm-config-server` en `172.29.0.60`), aquí tienes los comandos paso a paso para inspeccionar y probar la configuración centralizada y su recarga en caliente (`@RefreshScope`):
+
+### Comando 23 — Habilitar y poblar los secretos KV v2 en `vm-vault` (`secret/git-credentials` y `secret/vault-rotation-pilot`)
+
+- **📍 Dónde se ejecuta**: Dentro de `vm-vault` (lanzado desde tu PC).
+- **💻 Comando exacto copiable**:
+  ```bash
+  MSYS_NO_PATHCONV=1 docker exec vm-vault sh -c 'export VAULT_TOKEN=$(cat /vault/bootstrap/root.token) && vault kv get secret/git-credentials && vault kv get secret/vault-rotation-pilot'
+  ```
+- **🧠 ¿Qué hace este comando? (Explicación para Dummies)**:
+  Comprueba los dos secretos guardados en el motor **KV v2 (`secret/`)** de Vault:
+  1. `secret/git-credentials`: guarda el usuario y contraseña de Gitea (`pilot-admin`) para que `vm-config-server` los descargue con su `vault-agent` sin tener claves hardcodeadas.
+  2. `secret/vault-rotation-pilot`: guarda propiedades secretas (`pilot.vault.kv.secret-signature`) que Spring Cloud Config fusiona con el fichero YAML de Gitea.
+- **✅ Salida esperada**:
+  ```text
+  ====== Data ======
+  Key             Value
+  ---             -----
+  git_password    gitea_secret_password_2026
+  git_username    pilot-admin
+  ...
+  pilot.vault.kv.secret-signature    VAULT-KV-SIG-INITIAL-9001
+  ```
+
+---
+
+### Comando 24 — Verificar el repositorio Git y el fichero `vault-rotation-pilot.yml` en Gitea (`vm-git`)
+
+- **📍 Dónde se ejecuta**: En tu PC (`Host`).
+- **💻 Comando exacto copiable**:
+  ```bash
+  curl -s -u pilot-admin:gitea_secret_password_2026 http://localhost:13000/api/v1/repos/pilot-admin/pilot-config/contents/vault-rotation-pilot.yml
+  ```
+- **🧠 ¿Qué hace este comando? (Explicación para Dummies)**:
+  Consulta la API HTTP del servidor Gitea (`vm-git`, puerto `13000`) para verificar que el repositorio `pilot-admin/pilot-config` y el fichero `vault-rotation-pilot.yml` están creados y accesibles. También puedes abrir `http://localhost:13000` en tu navegador.
+- **✅ Salida esperada**:
+  Un JSON con `"name":"vault-rotation-pilot.yml"` y el `"sha"` del commit actual en la rama `main`.
+
+---
+
+### Comando 25 — Consultar el Composite Backend (`git` + `vault`) en `vm-config-server` (`:18888`)
+
+- **📍 Dónde se ejecuta**: En tu PC (`Host`).
+- **💻 Comando exacto copiable**:
+  ```bash
+  curl -s http://localhost:18888/vault-rotation-pilot/default
+  ```
+- **🧠 ¿Qué hace este comando? (Explicación para Dummies)**:
+  Pregunta directamente a **Spring Cloud Config Server** (`vm-config-server`, puerto `18888`) qué configuración tiene disponible para la aplicación `vault-rotation-pilot`. Verás que devuelve dos `propertySources` combinados: uno traído de **Vault KV v2** (`vault:vault-rotation-pilot`) y otro traído del **repositorio Git de Gitea** (`http://172.29.0.50:3000/pilot-admin/pilot-config.git`).
+- **✅ Salida esperada**:
+  JSON con `"propertySources"` incluyendo tanto `pilot.vault.kv.secret-signature` como `pilot.config.banner` y `pilot.config.custom-tag`.
+
+---
+
+### Comando 26 — Hacer un Commit en Gitea + Rotar Secreto KV en Vault + Recargar `@RefreshScope` en Caliente
+
+- **📍 Dónde se ejecuta**: En tu PC (`Host`).
+- **💻 Comando exacto copiable**:
+  ```bash
+  curl -s -X POST http://localhost:18080/api/pilot/config/refresh
+  ```
+- **🧠 ¿Qué hace este comando? (Explicación para Dummies)**:
+  Dispara en un solo paso toda la cadena de recarga en caliente sin reiniciar `vm-app`:
+  1. Crea un nuevo commit en el fichero `vault-rotation-pilot.yml` de Gitea cambiando `pilot.config.custom-tag` y `pilot.config.banner`.
+  2. Rota el secreto `secret/data/vault-rotation-pilot` en HashiCorp Vault.
+  3. Ejecuta `ContextRefresher.refresh()` en Spring Boot (`vm-app`), recargando el bean `@RefreshScope` al vuelo sin interrumpir las conexiones activas a PostgreSQL.
+- **✅ Salida esperada**:
+  ```json
+  {"refreshed":true,"commitSha":"...","springCloudConfig":{"customTag":"git-v2-...","vaultKvSignature":"VAULT-KV-SIG-ROTATED-..."}}
+  ```
+
+---
+
 ## 🔗 ¿Dónde seguir?
 
 - 📘 **[Volver a la Guía Explicada para Dummies (`docs/HOWTO-DUMMIES.md`)](HOWTO-DUMMIES.md)**: Con la historia del hotel de alta seguridad, diagramas y guía visual de la consola web.

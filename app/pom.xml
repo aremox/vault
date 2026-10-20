@@ -15,11 +15,24 @@
     <artifactId>vault-rotation-pilot</artifactId>
     <version>1.0.0</version>
     <name>vault-rotation-pilot</name>
-    <description>Piloto Spring Boot para negociacion y rotado de claves con HashiCorp Vault y PostgreSQL</description>
+    <description>Piloto Spring Boot para negociacion y rotado de claves con HashiCorp Vault, PostgreSQL y Spring Cloud Config</description>
 
     <properties>
         <java.version>21</java.version>
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -29,6 +42,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-config</artifactId>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>

@@ -2,6 +2,7 @@ package com.pilot.vault.controller;
 
 import com.pilot.vault.config.RotatableDataSourceManager;
 import com.pilot.vault.service.DbRotationProbeService;
+import com.pilot.vault.service.SpringCloudConfigService;
 import com.pilot.vault.service.VaultControlService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,15 +21,18 @@ public class PilotDashboardController {
     private final RotatableDataSourceManager dataSourceManager;
     private final DbRotationProbeService probeService;
     private final VaultControlService vaultControlService;
+    private final SpringCloudConfigService springCloudConfigService;
 
     public PilotDashboardController(
             RotatableDataSourceManager dataSourceManager,
             DbRotationProbeService probeService,
-            VaultControlService vaultControlService
+            VaultControlService vaultControlService,
+            SpringCloudConfigService springCloudConfigService
     ) {
         this.dataSourceManager = dataSourceManager;
         this.probeService = probeService;
         this.vaultControlService = vaultControlService;
+        this.springCloudConfigService = springCloudConfigService;
     }
 
     @GetMapping("/state")
@@ -53,6 +57,7 @@ public class PilotDashboardController {
                 probeService.getPreviousStaticPid()
         ));
         response.put("credentials", credentials);
+        response.put("springCloudConfig", springCloudConfigService.getSpringCloudConfigStatus());
 
         response.put("activeSessions", probeService.getActiveSessions());
         response.put("recentAudits", probeService.getRecentAudits());
@@ -79,6 +84,18 @@ public class PilotDashboardController {
         } catch (Exception e) {
             Map<String, Object> err = new LinkedHashMap<>();
             err.put("rotated", false);
+            err.put("error", e.getMessage());
+            return ResponseEntity.internalServerError().body(err);
+        }
+    }
+
+    @PostMapping({"/config/refresh", "/config/update-and-refresh"})
+    public ResponseEntity<Map<String, Object>> refreshSpringCloudConfig() {
+        try {
+            return ResponseEntity.ok(springCloudConfigService.commitInGiteaRotateKvAndRefresh());
+        } catch (Exception e) {
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("refreshed", false);
             err.put("error", e.getMessage());
             return ResponseEntity.internalServerError().body(err);
         }

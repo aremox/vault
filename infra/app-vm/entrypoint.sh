@@ -27,6 +27,15 @@ done
 
 echo "[vm-app] Credenciales negociadas por Vault Agent disponibles en /run/secrets/."
 
+echo "[vm-app] Esperando a que Spring Cloud Config Server (http://172.29.0.60:8888/vault-rotation-pilot/default) responda..."
+for i in $(seq 1 30); do
+  if curl -sf http://172.29.0.60:8888/vault-rotation-pilot/default >/dev/null 2>&1; then
+    echo "[vm-app] Spring Cloud Config Server disponible en 172.29.0.60:8888."
+    break
+  fi
+  sleep 1
+done
+
 if [ -f /opt/app/app.jar ]; then
   echo "[vm-app] Arrancando aplicacion Java Spring Boot (/opt/app/app.jar)..."
   exec java -jar /opt/app/app.jar

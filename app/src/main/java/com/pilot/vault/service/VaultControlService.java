@@ -94,7 +94,37 @@ public class VaultControlService {
         db.put("status", dataSourceManager.getStaticDataSource() != null ? "ONLINE" : "CONNECTING");
         nodes.put("db", db);
 
+        Map<String, Object> git = new LinkedHashMap<>();
+        git.put("ip", "172.29.0.50");
+        git.put("hostname", "vm-git");
+        git.put("role", "Gitea Git Server (:3000 -> Host :13000)");
+        git.put("repo", "pilot-admin/pilot-config");
+        git.put("status", checkHttpEndpoint("http://172.29.0.50:3000/api/v1/version") ? "ONLINE" : "CONNECTING");
+        nodes.put("git", git);
+
+        Map<String, Object> configServer = new LinkedHashMap<>();
+        configServer.put("ip", "172.29.0.60");
+        configServer.put("hostname", "vm-config-server");
+        configServer.put("role", "Spring Cloud Config Server (:8888 -> Host :18888)");
+        configServer.put("backends", "Composite (git + vault KV v2)");
+        configServer.put("status", checkHttpEndpoint("http://172.29.0.60:8888/actuator/health") ? "ONLINE" : "CONNECTING");
+        nodes.put("configServer", configServer);
+
         return nodes;
+    }
+
+    private boolean checkHttpEndpoint(String url) {
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(2))
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            return resp.statusCode() == 200;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public Map<String, Object> getAppRoleStatus() {

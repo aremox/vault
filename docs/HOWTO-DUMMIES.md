@@ -57,6 +57,8 @@ Imagina que la base de datos PostgreSQL es un **Hotel** y HashiCorp Vault es el 
 | **Vault Agent** | Un pequeño programa guardián que corre dentro de `vm-app`. Lee `role_id` y `secret_id`, obtiene un token de Vault, renueva las claves antes de que caduquen y rellena las plantillas `.ctmpl`. | Proceso `vault agent` en `vm-app`, configurado en `/etc/vault.d/vault-agent.hcl`. |
 | **Plantillas `.ctmpl`** | Moldes de texto que Vault Agent rellena con el usuario y contraseña reales para producir `/run/secrets/db-dynamic.properties` y `/run/secrets/db-static.properties`. | `/etc/vault.d/templates/*.ctmpl` en `vm-app`. |
 | **HikariCP Hot-Reload** | El gestor de conexiones SQL de Spring Boot. Normalmente solo lee la contraseña al arrancar; en este piloto, `RotatableDataSourceManager` vigila el hash SHA-256 del fichero y recrea el pool en caliente cuando cambia la clave. | Clase `RotatableDataSourceManager.java` en `vm-app`. |
+| **Gitea Git Server (`vm-git`)** | Un servidor Git con interfaz web propia (como un GitHub privado en miniatura) donde guardamos el fichero `vault-rotation-pilot.yml`. | Contenedor `vm-git` (`172.29.0.50:3000`, accesible desde tu navegador en `http://localhost:13000`). |
+| **Spring Cloud Config Server (`vm-config-server`)** | Un microservicio centralizador que combina las propiedades de negocio del repositorio Git de Gitea con los secretos KV v2 de HashiCorp Vault (`secret/data/vault-rotation-pilot`) y se los sirve a `vm-app` para recargarlos en caliente con `@RefreshScope`. | Contenedor `vm-config-server` (`172.29.0.60:8888`, accesible en `http://localhost:18888/vault-rotation-pilot/default`). |
 
 ---
 
@@ -77,7 +79,7 @@ Este piloto prueba **ambos mundos simultáneamente** para que puedas compararlos
 
 ## 4. Gráficos de Arquitectura y Flujo (Mermaid)
 
-### 4.1 Mapa Topológico de las 4 Máquinas Virtuales (Contenedores)
+### 4.1 Mapa Topológico de las 6 Máquinas Virtuales (Contenedores)
 
 ```mermaid
 flowchart LR
@@ -86,14 +88,26 @@ flowchart LR
 
         subgraph ANS["vm-ansible (172.29.0.40)"]
             A1["Playbook: deploy-approle.yml"]
-            A2["Inventario SSH: inventory.ini"]
+            A2["Inventario SSH: vm-config-server + vm-app"]
         end
 
         subgraph VLT["vm-vault (172.29.0.10:8200)"]
             V1["Almacenamiento en Disco (/vault/file)"]
             V2["Auth Method: auth/approle/spring-app-role"]
-            V3["Rol Dinamico: postgres-dynamic-role (TTL 60s)"]
-            V4["Rol Estatico: postgres-static-role (Rot 60s)"]
+            V3["Database Engine: dynamic & static (60s)"]
+            V5["KV v2 (secret/): git-credentials & vault-rotation-pilot"]
+        end
+
+        subgraph GIT["vm-git (172.29.0.50:3000 - Host :13000)"]
+            G1["Gitea Git Server + SQLite3"]
+            G2["Repo: pilot-admin/pilot-config (vault-rotation-pilot.yml)"]
+            G1 --> G2
+        end
+
+        subgraph CFG["vm-config-server (172.29.0.60:8888 - Host :18888)"]
+            CS_AG["vault-agent (lee secret/git-credentials)"]
+            CS_APP["Spring Cloud Config Server (Composite: git + vault)"]
+            CS_AG --> CS_APP
         end
 
         subgraph APP["vm-app (172.29.0.30) - Puerto Host 18080:8080"]
@@ -101,7 +115,7 @@ flowchart LR
             CRED["/etc/vault.d/role_id + secret_id (0600)"]
             AG["Demonio vault-agent (Auto-Auth + Render 10s)"]
             FILES["/run/secrets/db-dynamic & db-static.properties"]
-            SB["Spring Boot 3 + RotatableDataSourceManager"]
+            SB["Spring Boot 3 + @RefreshScope + RotatableDataSourceManager"]
             POOL_D["HikariPool-DYNAMIC"]
             POOL_S["HikariPool-STATIC"]
 
@@ -116,13 +130,16 @@ flowchart LR
             PG --> T_AUD
         end
 
-        A1 -- "1. Pide role_id y genera secret_id (HTTP API)" --> V2
-        A1 -- "2. Inyecta role_id y secret_id por SSH" --> SSH
-        AG -- "3. Login AppRole y lectura de secretos" --> V2
-        V3 -- "4a. CREATE / DROP ROLE efimero" --> PG
-        V4 -- "4b. ALTER USER app_static_user PASSWORD" --> PG
-        POOL_D -- "5a. INSERT cada 5s (Usuario Efimero)" --> PG
-        POOL_S -- "5b. INSERT cada 5s (app_static_user)" --> PG
+        A1 -- "1. Pide role_id y genera secret_id" --> V2
+        A1 -- "2a. Inyecta AppRole por SSH" --> CFG
+        A1 -- "2b. Inyecta AppRole por SSH" --> SSH
+        CS_APP -- "3a. Clona YAML de Gitea" --> G2
+        CS_APP -- "3b. Lee KV v2 secret/vault-rotation-pilot" --> V5
+        SB -- "4. Importa config y @RefreshScope" --> CS_APP
+        AG -- "5. Login AppRole y lectura de leases" --> V2
+        V3 -- "6. CREATE ROLE / ALTER USER" --> PG
+        POOL_D -- "7a. INSERT cada 5s (Dynamic)" --> PG
+        POOL_S -- "7b. INSERT cada 5s (Static)" --> PG
     end
 ```
 
@@ -270,7 +287,7 @@ Abre tu navegador favorito y entra en:
    - **Bolitas cian (`SQL DYN`):** representan las consultas SQL que Spring Boot hace cada 5 segundos usando el **usuario efímero dinámico**.
    - **Bolitas verdes (`SQL STAT`):** representan las consultas SQL que Spring Boot hace cada 5 segundos usando el **usuario fijo con contraseña rotada**.
 
-2. **Las 3 Tarjetas Centrales de Secretos:**
+2. **Las 4 Tarjetas Centrales de Secretos y Configuración:**
    - **Tarjeta Morada (`Artefactos AppRole /etc/vault.d`):** muestra el `role_id`, los permisos `0600` y el `secret_id` oculto. Pulsa el botón **`Mostrar`** para ver el UUID real inyectado por Ansible.
    - **Tarjeta Cian (`DYNAMIC LEASE · TTL 60s`):**
      - Observa el campo **Usuario Efímero Actual** (`v-approle-postgres-...`).
@@ -280,6 +297,9 @@ Abre tu navegador favorito y entra en:
      - Aquí el usuario **siempre es `app_static_user`**.
      - Pulsa **`Mostrar`** en la contraseña y luego haz clic arriba en **`🔑 Forzar Rotación Estática`**.
      - Verás en directo cómo la contraseña cambia de texto, cambia su hash SHA-256 y **cambia el `PID` de conexión en PostgreSQL** (demostrando que Spring Boot cerró el pool viejo y abrió uno nuevo con la nueva contraseña).
+   - **Tarjeta Rosa (`GITEA + SPRING CLOUD CONFIG`):**
+     - Muestra el repositorio `pilot-admin/pilot-config` (con enlace directo a `http://localhost:13000`), el SHA del último commit en Gitea, el `pilot.config.banner` y el secreto `pilot.vault.kv.secret-signature` traído de Vault KV v2 a través de `vm-config-server` (`http://localhost:18888`).
+     - Al pulsar el botón **`🔄 Commit en Gitea + Refresh Spring Cloud (@RefreshScope)`** (o `Commit + Refresh` en la tarjeta), `vm-app` hace un nuevo commit automático en Gitea, rota el secreto en Vault KV v2 e invoca `ContextRefresher.refresh()` para recargar `@RefreshScope` en vivo sin reiniciar el contenedor.
 
 3. **Botón `▶ Simular Flujo Completo` (Arriba a la derecha):**
    - Si quieres enseñar a alguien cómo funciona la arquitectura paso a paso, pulsa este botón: la web iluminará secuencialmente los pasos `1/5` a `5/5` lanzando ráfagas de paquetes entre los nodos.

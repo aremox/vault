@@ -75,7 +75,24 @@ vault write database/static-roles/postgres-static-role \
   rotation_statements="ALTER USER \"{{name}}\" WITH PASSWORD '{{password}}';" \
   rotation_period="60s"
 
-# 5. Cargar politica y habilitar AppRole
+# 5. Habilitar motor KV v2 en secret/ y almacenar secretos para Gitea y Spring Cloud Config
+if ! vault secrets list | grep -q "^secret/"; then
+  echo "[vm-vault] Habilitando motor KV v2 en secret/..."
+  vault secrets enable -version=2 -path=secret kv
+fi
+
+echo "[vm-vault] Almacenando credenciales de Gitea en secret/git-credentials..."
+vault kv put secret/git-credentials \
+  git_username="pilot-admin" \
+  git_password="gitea_secret_password_2026"
+
+echo "[vm-vault] Almacenando propiedades secretas de aplicacion en secret/vault-rotation-pilot..."
+vault kv put secret/vault-rotation-pilot \
+  "pilot.vault.kv.secret-signature=VAULT-KV-SIG-INITIAL-9001" \
+  "pilot.vault.kv.rotation-stage=STAGE-1" \
+  "pilot.vault.kv.encryption-salt=SALT-LAB-2026-INIT"
+
+# 6. Cargar politica y habilitar AppRole
 echo "[vm-vault] Cargando politica app-db-policy y configurando AppRole spring-app-role..."
 vault policy write app-db-policy /vault/policies/app-db-policy.hcl
 

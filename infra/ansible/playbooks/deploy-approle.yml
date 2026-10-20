@@ -1,6 +1,7 @@
 ---
-- name: Negociar role_id + secret_id en Vault y desplegarlos por SSH en vm-app
-  hosts: app_vms
+- name: Negociar role_id + secret_id en Vault y desplegarlos por SSH en vm-config-server y vm-app
+  hosts: config_vms:app_vms
+  serial: 1
   gather_facts: false
   vars:
     vault_addr: "http://172.29.0.10:8200"
@@ -48,7 +49,7 @@
       register: role_id_resp
       delegate_to: localhost
 
-    - name: Generar nuevo secret_id para {{ approle_name }} desde Vault API
+    - name: Generar nuevo secret_id para {{ approle_name }} ({{ inventory_hostname }}) desde Vault API
       ansible.builtin.uri:
         url: "{{ vault_addr }}/v1/auth/approle/role/{{ approle_name }}/secret-id"
         method: POST
@@ -59,11 +60,11 @@
       register: secret_id_resp
       delegate_to: localhost
 
-    - name: Esperar conexion SSH disponible en vm-app (172.29.0.30:22)
+    - name: Esperar conexion SSH disponible en {{ inventory_hostname }} ({{ ansible_host }}:22)
       ansible.builtin.wait_for_connection:
         timeout: 60
 
-    - name: Asegurar directorios /etc/vault.d y /run/secrets en vm-app
+    - name: Asegurar directorios /etc/vault.d y /run/secrets en {{ inventory_hostname }}
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
@@ -74,7 +75,7 @@
         - /etc/vault.d
         - /run/secrets
 
-    - name: Desplegar /etc/vault.d/role_id con permisos 0600 en vm-app
+    - name: Desplegar /etc/vault.d/role_id con permisos 0600 en {{ inventory_hostname }}
       ansible.builtin.copy:
         content: "{{ role_id_resp.json.data.role_id }}"
         dest: /etc/vault.d/role_id
@@ -82,7 +83,7 @@
         group: root
         mode: "0600"
 
-    - name: Desplegar /etc/vault.d/secret_id con permisos 0600 en vm-app
+    - name: Desplegar /etc/vault.d/secret_id con permisos 0600 en {{ inventory_hostname }}
       ansible.builtin.copy:
         content: "{{ secret_id_resp.json.data.secret_id }}"
         dest: /etc/vault.d/secret_id
@@ -90,13 +91,23 @@
         group: root
         mode: "0600"
 
-    - name: Iniciar o recargar demonio vault-agent en vm-app
+    - name: Iniciar o recargar demonio vault-agent en {{ inventory_hostname }}
       ansible.builtin.shell: |
         pkill -x vault || true
         nohup vault agent -config=/etc/vault.d/vault-agent.hcl >/var/log/vault-agent/agent.log 2>&1 &
       changed_when: true
 
-    - name: Esperar a que vault-agent renderice credenciales dinamicas y estaticas en /run/secrets
+    - name: Esperar a que vault-agent renderice credenciales de Gitea y token en vm-config-server
+      ansible.builtin.wait_for:
+        path: "{{ item }}"
+        state: present
+        timeout: 30
+      loop:
+        - /run/secrets/vault-token
+        - /run/secrets/git-credentials.properties
+      when: inventory_hostname == 'vm-config-server'
+
+    - name: Esperar a que vault-agent renderice credenciales dinamicas y estaticas en vm-app
       ansible.builtin.wait_for:
         path: "{{ item }}"
         state: present
@@ -104,3 +115,4 @@
       loop:
         - /run/secrets/db-dynamic.properties
         - /run/secrets/db-static.properties
+      when: inventory_hostname == 'vm-app'
