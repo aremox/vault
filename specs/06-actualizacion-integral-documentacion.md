@@ -1,6 +1,6 @@
 # Spec 06: Actualización Integral y Sincronización de Documentación para la Arquitectura de 6 VMs (Gitea + Spring Cloud Config + Vault + Ansible + PostgreSQL)
 
-- **Status**: Approved
+- **Status**: Implemented
 - **Depends on**: SPEC 01, SPEC 02, SPEC 03, SPEC 04, SPEC 05
 - **Date**: 2026-10-20
 - **Objective**: Actualizar y sincronizar de forma exhaustiva `README.md`, `docs/HOWTO-DUMMIES.md` y `docs/PASO-A-PASO-COMANDOS.md` para que todas las analogías, diccionarios, diagramas Mermaid de secuencia/estados, recorridos paso a paso en orden cronológico y recetarios de terminal reflejen sin inconsistencias la arquitectura completa de 6 máquinas virtuales (`vm-db`, `vm-vault`, `vm-git`, `vm-config-server`, `vm-ansible`, `vm-app`).
@@ -85,11 +85,11 @@ Esta especificación es exclusivamente documental y no introduce cambios en mode
 
 ## 4. Acceptance Criteria
 
-- [ ] Ninguno de los ficheros `README.md`, `docs/HOWTO-DUMMIES.md` ni `docs/PASO-A-PASO-COMANDOS.md` contiene referencias obsoletas a "4 máquinas", "4 contenedores", "3 tarjetas" o "22 comandos".
-- [ ] `docs/HOWTO-DUMMIES.md` incluye los 4 diagramas Mermaid (`4.1`, `4.2`, `4.3`, `4.4`) actualizados con las 6 máquinas (`vm-db`, `vm-vault`, `vm-git`, `vm-config-server`, `vm-ansible`, `vm-app`) y el flujo de `@RefreshScope`.
-- [ ] `docs/PASO-A-PASO-COMANDOS.md` contiene el **Recorrido A** con los **16 pasos** cronológicos de Docker y el **Recorrido B** con el diagrama de secuencia y las fichas completas de los **28 comandos internos** en orden cronológico real.
-- [ ] Todos los bloques de comandos en `docs/HOWTO-DUMMIES.md` y `docs/PASO-A-PASO-COMANDOS.md` incluyen `MSYS_NO_PATHCONV=1` cuando invocan rutas POSIX con `docker exec`.
-- [ ] `bash scripts/verify-ui.sh` termina con `EXIT 0`.
+- [x] Ninguno de los ficheros `README.md`, `docs/HOWTO-DUMMIES.md` ni `docs/PASO-A-PASO-COMANDOS.md` contiene referencias obsoletas a "4 máquinas", "4 contenedores", "3 tarjetas" o "22 comandos".
+- [x] `docs/HOWTO-DUMMIES.md` incluye los 4 diagramas Mermaid (`4.1`, `4.2`, `4.3`, `4.4`) actualizados con las 6 máquinas (`vm-db`, `vm-vault`, `vm-git`, `vm-config-server`, `vm-ansible`, `vm-app`) y el flujo de `@RefreshScope`.
+- [x] `docs/PASO-A-PASO-COMANDOS.md` contiene el **Recorrido A** con los **16 pasos** cronológicos de Docker y el **Recorrido B** con el diagrama de secuencia y las fichas completas de los **28 comandos internos** en orden cronológico real.
+- [x] Todos los bloques de comandos en `docs/HOWTO-DUMMIES.md` y `docs/PASO-A-PASO-COMANDOS.md` incluyen `MSYS_NO_PATHCONV=1` cuando invocan rutas POSIX con `docker exec`.
+- [x] `bash scripts/verify-ui.sh` termina con `EXIT 0`.
 
 ---
 

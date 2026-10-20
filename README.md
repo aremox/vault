@@ -1,8 +1,8 @@
 # Piloto HashiCorp Vault + Gitea + Spring Cloud Config + Ansible + Spring Boot 3 + PostgreSQL 16
 
 > **¿Primera vez viendo este proyecto?**
-> - 👉 **[Manual Completo "Para Dummies" (`docs/HOWTO-DUMMIES.md`)](docs/HOWTO-DUMMIES.md)**: Analogías sencillas, diagramas Mermaid de arquitectura con las 6 máquinas, guía de la consola web y preguntas frecuentes.
-> - 🛠️ **[Guía de Comandos 1 por 1 "Para Dummies" (`docs/PASO-A-PASO-COMANDOS.md`)](docs/PASO-A-PASO-COMANDOS.md)**: Todos los comandos numerados 1 por 1 hasta tener todo montado (tanto el Recorrido A con Docker contenedor a contenedor como el Recorrido B con los comandos internos reales de PostgreSQL, Gitea, Vault, Spring Cloud Config, Ansible y Spring Boot).
+> - 👉 **[Manual Completo "Para Dummies" (`docs/HOWTO-DUMMIES.md`)](docs/HOWTO-DUMMIES.md)**: Analogías sencillas, los 4 diagramas Mermaid de arquitectura/secuencia/estados con las 6 máquinas virtuales, guía de la consola web y preguntas frecuentes.
+> - 🛠️ **[Guía de Comandos 1 por 1 "Para Dummies" (`docs/PASO-A-PASO-COMANDOS.md`)](docs/PASO-A-PASO-COMANDOS.md)**: Todos los comandos numerados 1 por 1 en orden cronológico real hasta tener todo montado (tanto el **Recorrido A** en **16 pasos** con Docker contenedor a contenedor como el **Recorrido B** con los **28 comandos internos reales** de PostgreSQL, Gitea, Vault, Ansible, Spring Cloud Config y Spring Boot).
 
 ---
 
@@ -17,7 +17,7 @@ Este laboratorio despliega **6 contenedores que simulan máquinas virtuales** en
    - **Rol Dinámico (`postgres-dynamic-role`, TTL 60s):** crea y destruye usuarios SQL efímeros (`v-approle-postgres-...`).
    - **Rol Estático (`postgres-static-role`, rotación 60s):** mantiene el usuario fijo `app_static_user` rotando automáticamente su contraseña en PostgreSQL.
 5. **Hot-Reload de `HikariCP` + `@RefreshScope` en Java 21 Spring Boot 3 (`vm-app`):** `RotatableDataSourceManager` recarga los pools SQL sin perder consultas cuando rotan las claves, y `SpringCloudConfigService` permite hacer un nuevo commit en Gitea, rotar secretos KV en Vault y ejecutar `ContextRefresher.refresh()` en caliente.
-6. **Consola Web Animada (`http://localhost:18080`):** interfaz visual en tiempo real con mapa SVG de las 6 máquinas virtuales, partículas animadas, visor de contraseñas y botones para forzar rotaciones SQL y commits + `@RefreshScope` en un clic.
+6. **Consola Web Animada (`http://localhost:18080`):** interfaz visual en tiempo real con mapa SVG de las 6 máquinas virtuales, partículas animadas, 4 tarjetas de inspección, visor de contraseñas y botones para forzar rotaciones SQL y commits + `@RefreshScope` en un clic.
 
 ---
 
@@ -58,7 +58,7 @@ flowchart LR
 
 ## Arranque Rápido (3 pasos)
 
-> 💡 ¿Prefieres levantar cada máquina **1 por 1** o ejecutar manualmente todos los comandos internos de configuración? Sigue la **[Guía de Comandos 1 por 1 (`docs/PASO-A-PASO-COMANDOS.md`)](docs/PASO-A-PASO-COMANDOS.md)**.
+> 💡 ¿Prefieres levantar cada máquina **1 por 1** (16 pasos) o ejecutar manualmente los **28 comandos internos** de configuración? Sigue la **[Guía de Comandos 1 por 1 (`docs/PASO-A-PASO-COMANDOS.md`)](docs/PASO-A-PASO-COMANDOS.md)**.
 
 ```bash
 # 1. Construir y levantar las 6 VMs en segundo plano
@@ -83,8 +83,8 @@ vault/
 ├── docker-compose.yml                  # Topologia de 6 contenedores VM en 172.29.0.0/24
 ├── README.md                           # Resumen ejecutivo y arranque rapido
 ├── docs/
-│   ├── HOWTO-DUMMIES.md                # Manual conceptual e interactivo con diagramas Mermaid
-│   └── PASO-A-PASO-COMANDOS.md         # Guia de comandos 1 por 1 (Docker paso a paso + comandos internos)
+│   ├── HOWTO-DUMMIES.md                # Manual conceptual e interactivo con diagramas Mermaid (6 VMs)
+│   └── PASO-A-PASO-COMANDOS.md         # Guia de comandos 1 por 1 (16 pasos Docker + 28 cmds internos)
 ├── infra/
 │   ├── db/
 │   │   └── init.sql                    # Esquema PostgreSQL, tabla de auditoria y roles base
@@ -132,11 +132,12 @@ vault/
 │   ├── verify-pilot.sh                 # Verificacion CLI extremo a extremo de las 6 VMs, SQL y @RefreshScope
 │   └── verify-ui.sh                    # Verificacion CLI de la consola web y endpoints REST
 └── specs/
-    ├── 01-vault-rotacion-claves-bbdd.md        # SPEC 01 (Implemented)
-    ├── 02-web-animada-arquitectura-vault.md    # SPEC 02 (Implemented)
-    ├── 03-readme-howto-dummies.md              # SPEC 03 (Implemented)
-    ├── 04-guia-comandos-paso-a-paso-dummies.md # SPEC 04 (Implemented)
-    └── 05-git-server-spring-cloud-vault.md     # SPEC 05 (Implemented)
+    ├── 01-vault-rotacion-claves-bbdd.md            # SPEC 01 (Implemented)
+    ├── 02-web-animada-arquitectura-vault.md        # SPEC 02 (Implemented)
+    ├── 03-readme-howto-dummies.md                  # SPEC 03 (Implemented)
+    ├── 04-guia-comandos-paso-a-paso-dummies.md     # SPEC 04 (Implemented)
+    ├── 05-git-server-spring-cloud-vault.md         # SPEC 05 (Implemented)
+    └── 06-actualizacion-integral-documentacion.md  # SPEC 06 (Implemented)
 ```
 
 ---
@@ -150,3 +151,4 @@ vault/
 - 📖 **[SPEC 03 — Documentación README y guía How-To para Dummies](specs/03-readme-howto-dummies.md)**
 - 🔢 **[SPEC 04 — Guía de comandos 1 por 1 para Dummies](specs/04-guia-comandos-paso-a-paso-dummies.md)**
 - 🌐 **[SPEC 05 — Servidor Git Gitea + Spring Cloud Config Server + Vault](specs/05-git-server-spring-cloud-vault.md)**
+- 📚 **[SPEC 06 — Actualización integral y sincronización de documentación (6 VMs)](specs/06-actualizacion-integral-documentacion.md)**
