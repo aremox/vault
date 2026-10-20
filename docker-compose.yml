@@ -50,6 +50,47 @@ services:
       timeout: 5s
       retries: 15
 
+  vm-git:
+    build:
+      context: .
+      dockerfile: infra/git/Dockerfile
+    container_name: vm-git
+    hostname: vm-git
+    ports:
+      - "13000:3000"
+    volumes:
+      - gitea-data:/data
+    networks:
+      vault-pilot-net:
+        ipv4_address: 172.29.0.50
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /run/gitea/ready && curl -sf http://127.0.0.1:3000/api/v1/repos/pilot-admin/pilot-config >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  vm-config-server:
+    build:
+      context: .
+      dockerfile: infra/config-server/Dockerfile
+    container_name: vm-config-server
+    hostname: vm-config-server
+    depends_on:
+      vm-vault:
+        condition: service_healthy
+      vm-git:
+        condition: service_healthy
+    ports:
+      - "18888:8888"
+    networks:
+      vault-pilot-net:
+        ipv4_address: 172.29.0.60
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   vm-app:
     build:
       context: .
@@ -58,6 +99,10 @@ services:
     hostname: vm-app
     depends_on:
       vm-vault:
+        condition: service_healthy
+      vm-git:
+        condition: service_healthy
+      vm-config-server:
         condition: service_healthy
     ports:
       - "18080:8080"
@@ -82,6 +127,10 @@ services:
     depends_on:
       vm-vault:
         condition: service_healthy
+      vm-git:
+        condition: service_healthy
+      vm-config-server:
+        condition: service_healthy
       vm-app:
         condition: service_healthy
     volumes:
@@ -101,6 +150,7 @@ volumes:
   db-data:
   vault-file-data:
   vault-bootstrap-data:
+  gitea-data:
 
 networks:
   vault-pilot-net:

@@ -1,6 +1,6 @@
 # Spec 05: Servidor Git Gitea + Spring Cloud Config Server + Integración con HashiCorp Vault
 
-- **Status**: Approved
+- **Status**: Implemented
 - **Depends on**: SPEC 01, SPEC 02, SPEC 03, SPEC 04
 - **Date**: 2026-10-19
 - **Objective**: Añadir al laboratorio un servidor Git ligero con interfaz web (`vm-git` con Gitea) y un servidor dedicado Spring Cloud Config (`vm-config-server`) integrado con HashiCorp Vault y Ansible para centralizar y refrescar en caliente (`@RefreshScope`) las propiedades y secretos de la aplicación Spring Boot (`vm-app`).
@@ -128,14 +128,14 @@ Y `POST /api/pilot/config/refresh` actualizará el YAML en Gitea (haciendo un co
 
 ## 4. Acceptance Criteria
 
-- [ ] `docker compose ps` muestra los 6 contenedores (`vm-db`, `vm-vault`, `vm-git`, `vm-config-server`, `vm-app`, `vm-ansible`) en estado `healthy`.
-- [ ] Gitea responde en `http://localhost:13000` con el repositorio `pilot-admin/pilot-config` y el fichero `vault-rotation-pilot.yml` creado automáticamente sin intervención manual.
-- [ ] `vm-vault` tiene activo el motor KV v2 en `secret/` con `secret/git-credentials` y `secret/vault-rotation-pilot`.
-- [ ] `vm-config-server` (`http://localhost:18888/vault-rotation-pilot/default`) devuelve combinadas las propiedades del repositorio Git de Gitea y los secretos de `secret/data/vault-rotation-pilot` de Vault.
-- [ ] `vm-app` arranca consumiendo las propiedades de `vm-config-server` y al invocar `POST /api/pilot/config/refresh` (o pulsar el botón en la consola web) realiza un nuevo commit en Gitea, actualiza el secreto KV en Vault y recarga `@RefreshScope` en caliente cambiando los valores expuestos en `GET /api/pilot/state` sin reiniciar `vm-app`.
-- [ ] La consola web en `http://localhost:18080` visualiza los 6 nodos en el diagrama SVG animado y permite disparar el refresh de Spring Cloud en un clic.
-- [ ] `bash scripts/verify-ui.sh` y `bash scripts/verify-pilot.sh` terminan con `EXIT 0`.
-- [ ] `README.md`, `docs/HOWTO-DUMMIES.md` y `docs/PASO-A-PASO-COMANDOS.md` reflejan la nueva arquitectura y comandos 1 por 1.
+- [x] `docker compose ps` muestra los 6 contenedores (`vm-db`, `vm-vault`, `vm-git`, `vm-config-server`, `vm-app`, `vm-ansible`) en estado `healthy`.
+- [x] Gitea responde en `http://localhost:13000` con el repositorio `pilot-admin/pilot-config` y el fichero `vault-rotation-pilot.yml` creado automáticamente sin intervención manual.
+- [x] `vm-vault` tiene activo el motor KV v2 en `secret/` con `secret/git-credentials` y `secret/vault-rotation-pilot`.
+- [x] `vm-config-server` (`http://localhost:18888/vault-rotation-pilot/default`) devuelve combinadas las propiedades del repositorio Git de Gitea y los secretos de `secret/data/vault-rotation-pilot` de Vault.
+- [x] `vm-app` arranca consumiendo las propiedades de `vm-config-server` y al invocar `POST /api/pilot/config/refresh` (o pulsar el botón en la consola web) realiza un nuevo commit en Gitea, actualiza el secreto KV en Vault y recarga `@RefreshScope` en caliente cambiando los valores expuestos en `GET /api/pilot/state` sin reiniciar `vm-app`.
+- [x] La consola web en `http://localhost:18080` visualiza los 6 nodos en el diagrama SVG animado y permite disparar el refresh de Spring Cloud en un clic.
+- [x] `bash scripts/verify-ui.sh` y `bash scripts/verify-pilot.sh` terminan con `EXIT 0`.
+- [x] `README.md`, `docs/HOWTO-DUMMIES.md` y `docs/PASO-A-PASO-COMANDOS.md` reflejan la nueva arquitectura y comandos 1 por 1.
 
 ---
 

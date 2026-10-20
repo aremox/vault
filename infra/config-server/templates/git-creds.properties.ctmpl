@@ -1,0 +1,4 @@
+{{- with secret "secret/data/git-credentials" -}}
+git.username={{ .Data.data.git_username }}
+git.password={{ .Data.data.git_password }}
+{{- end }}

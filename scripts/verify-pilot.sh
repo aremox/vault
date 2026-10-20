@@ -4,18 +4,20 @@ export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL="*"
 
 echo "=================================================================="
-echo " PILOTO HASHICORP VAULT + ANSIBLE + SPRING BOOT + POSTGRESQL"
-echo " Verificacion extremo a extremo de negociacion y rotado de claves"
+echo " PILOTO HASHICORP VAULT + GITEA + SPRING CLOUD CONFIG + POSTGRESQL"
+echo " Verificacion extremo a extremo de las 6 VMs, rotacion y hot-reload"
 echo "=================================================================="
 
 # 1. Verificar contenedores e IPs estaticas en 172.29.0.0/24
 echo ""
-echo "[1/7] Verificando los 4 contenedores tipo VM y sus IPs fijas..."
+echo "[1/8] Verificando los 6 contenedores tipo VM y sus IPs fijas..."
 declare -A EXPECTED_IPS=(
   ["vm-vault"]="172.29.0.10"
   ["vm-db"]="172.29.0.20"
   ["vm-app"]="172.29.0.30"
   ["vm-ansible"]="172.29.0.40"
+  ["vm-git"]="172.29.0.50"
+  ["vm-config-server"]="172.29.0.60"
 )
 
 for cname in "${!EXPECTED_IPS[@]}"; do
@@ -29,9 +31,9 @@ for cname in "${!EXPECTED_IPS[@]}"; do
   echo "  [OK] $cname activo en $actual_ip"
 done
 
-# 2. Verificar estado de HashiCorp Vault Server (Initialized, Sealed: false, Storage: file)
+# 2. Verificar estado de HashiCorp Vault Server (Initialized, Sealed: false, Storage: file, KV v2 secret/)
 echo ""
-echo "[2/7] Verificando estado de vm-vault (modo Server real con file storage)..."
+echo "[2/8] Verificando estado de vm-vault (Storage: file + motores database/ y secret/ KV v2)..."
 VAULT_STATUS_JSON=$(docker exec vm-vault vault status -format=json | tr -d '\r')
 INIT=$(echo "$VAULT_STATUS_JSON" | grep -o '"initialized": *true' || true)
 SEALED=$(echo "$VAULT_STATUS_JSON" | grep -o '"sealed": *false' || true)
@@ -41,45 +43,89 @@ if [ -z "$INIT" ] || [ -z "$SEALED" ] || [ -z "$STORAGE" ]; then
   echo "ERROR: Estado de Vault invalido: $VAULT_STATUS_JSON"
   exit 1
 fi
-echo "  [OK] Vault Server -> Initialized: true | Sealed: false | Storage Type: file"
 
-# 3. Verificar aprovisionamiento Ansible por SSH (role_id + secret_id con permisos 0600)
+ROOT_TOKEN=$(docker exec vm-vault cat /vault/bootstrap/root.token | tr -d '\r\n')
+KV_GIT_USER=$(docker exec -e VAULT_TOKEN="$ROOT_TOKEN" vm-vault vault kv get -field=git_username secret/git-credentials | tr -d '\r\n')
+KV_SIG_INIT=$(docker exec -e VAULT_TOKEN="$ROOT_TOKEN" vm-vault vault kv get -field=pilot.vault.kv.secret-signature secret/vault-rotation-pilot | tr -d '\r\n')
+if [ "$KV_GIT_USER" != "pilot-admin" ] || [ -z "$KV_SIG_INIT" ]; then
+  echo "ERROR: Secretos KV v2 no encontrados en secret/git-credentials o secret/vault-rotation-pilot"
+  exit 1
+fi
+echo "  [OK] Vault Server -> Initialized: true | Sealed: false | KV v2 secret/git-credentials ($KV_GIT_USER) y secret/vault-rotation-pilot ($KV_SIG_INIT)"
+
+# 3. Verificar Gitea (vm-git :13000) y Spring Cloud Config Server (vm-config-server :18888)
 echo ""
-echo "[3/7] Verificando ejecucion del playbook Ansible (role_id + secret_id -> vm-app)..."
+echo "[3/8] Verificando Gitea (http://localhost:13000) y Spring Cloud Config Server (http://localhost:18888)..."
+GITEA_REPO_JSON=$(curl -fsS http://localhost:13000/api/v1/repos/pilot-admin/pilot-config | tr -d '\r')
+if ! echo "$GITEA_REPO_JSON" | grep -q '"full_name":"pilot-admin/pilot-config"'; then
+  echo "ERROR: Repositorio pilot-admin/pilot-config no existe en Gitea"
+  exit 1
+fi
+
+CONFIG_READY="false"
+for i in $(seq 1 30); do
+  if curl -fsS http://localhost:18888/vault-rotation-pilot/default >/dev/null 2>&1; then
+    CONFIG_READY="true"
+    break
+  fi
+  sleep 2
+done
+
+if [ "$CONFIG_READY" != "true" ]; then
+  echo "ERROR: vm-config-server no respondio en http://localhost:18888/vault-rotation-pilot/default"
+  docker logs --tail 30 vm-config-server
+  exit 1
+fi
+
+CONFIG_PAYLOAD=$(curl -fsS http://localhost:18888/vault-rotation-pilot/default | tr -d '\r')
+if ! echo "$CONFIG_PAYLOAD" | grep -q "pilot.config.banner" || ! echo "$CONFIG_PAYLOAD" | grep -q "pilot.vault.kv.secret-signature"; then
+  echo "ERROR: vm-config-server no devolvio combinadas las propiedades de Gitea + Vault KV v2:"
+  echo "$CONFIG_PAYLOAD"
+  exit 1
+fi
+echo "  [OK] Gitea (:13000) y Spring Cloud Config Server (:18888) sirven propiedades combinadas Git + Vault KV v2"
+
+# 4. Verificar aprovisionamiento Ansible por SSH (role_id + secret_id con permisos 0600 en vm-config-server y vm-app)
+echo ""
+echo "[4/8] Verificando ejecucion del playbook Ansible (role_id + secret_id -> vm-config-server y vm-app)..."
 ANSIBLE_OUT=$(docker logs vm-ansible 2>&1 | tr -d '\r')
-echo "$ANSIBLE_OUT" | tail -n 5
+echo "$ANSIBLE_OUT" | tail -n 6
 if ! echo "$ANSIBLE_OUT" | grep -q "failed=0"; then
   echo "Re-ejecutando playbook Ansible..."
   ANSIBLE_OUT=$(docker exec vm-ansible ansible-playbook -i /etc/ansible/inventory.ini /etc/ansible/playbooks/deploy-approle.yml | tr -d '\r')
-  echo "$ANSIBLE_OUT" | tail -n 5
+  echo "$ANSIBLE_OUT" | tail -n 6
   if ! echo "$ANSIBLE_OUT" | grep -q "failed=0"; then
     echo "ERROR: Playbook de Ansible reporto fallos."
     exit 1
   fi
 fi
 
-ROLE_PERM=$(docker exec vm-app stat -c "%a" /etc/vault.d/role_id | tr -d '\r\n')
-SECRET_PERM=$(docker exec vm-app stat -c "%a" /etc/vault.d/secret_id | tr -d '\r\n')
-if [ "$ROLE_PERM" != "600" ] || [ "$SECRET_PERM" != "600" ]; then
-  echo "ERROR: Permisos incorrectos en /etc/vault.d (role_id=$ROLE_PERM, secret_id=$SECRET_PERM)"
-  exit 1
-fi
-echo "  [OK] /etc/vault.d/role_id ($ROLE_PERM) y /etc/vault.d/secret_id ($SECRET_PERM) aprovisionados via SSH"
+for target_vm in vm-config-server vm-app; do
+  ROLE_PERM=$(docker exec "$target_vm" stat -c "%a" /etc/vault.d/role_id | tr -d '\r\n')
+  SECRET_PERM=$(docker exec "$target_vm" stat -c "%a" /etc/vault.d/secret_id | tr -d '\r\n')
+  if [ "$ROLE_PERM" != "600" ] || [ "$SECRET_PERM" != "600" ]; then
+    echo "ERROR: Permisos incorrectos en $target_vm:/etc/vault.d (role_id=$ROLE_PERM, secret_id=$SECRET_PERM)"
+    exit 1
+  fi
+  echo "  [OK] $target_vm:/etc/vault.d/role_id ($ROLE_PERM) y secret_id ($SECRET_PERM) aprovisionados via SSH"
+done
 
-# 4. Verificar ficheros renderizados por Vault Agent
+# 5. Verificar ficheros renderizados por Vault Agent en vm-config-server y vm-app
 echo ""
-echo "[4/7] Verificando ficheros de secretos renderizados por vault-agent en vm-app..."
+echo "[5/8] Verificando ficheros de secretos renderizados por vault-agent..."
+docker exec vm-config-server test -s /run/secrets/git-credentials.properties
 docker exec vm-app test -s /run/secrets/db-dynamic.properties
 docker exec vm-app test -s /run/secrets/db-static.properties
 DYN_USER_1=$(docker exec vm-app awk -F= '/username/{print $2}' /run/secrets/db-dynamic.properties | tr -d '\r\n')
 STAT_USER_1=$(docker exec vm-app awk -F= '/username/{print $2}' /run/secrets/db-static.properties | tr -d '\r\n')
 STAT_PWD_1=$(docker exec vm-app awk -F= '/password/{print $2}' /run/secrets/db-static.properties | tr -d '\r\n')
-echo "  [OK] Usuario dinamico actual : $DYN_USER_1"
-echo "  [OK] Usuario estatico actual : $STAT_USER_1 (hash pwd: $(printf '%s' "$STAT_PWD_1" | sha256sum | cut -c1-10))"
+echo "  [OK] vm-config-server: /run/secrets/git-credentials.properties renderizado"
+echo "  [OK] vm-app Usuario dinamico actual : $DYN_USER_1"
+echo "  [OK] vm-app Usuario estatico actual : $STAT_USER_1 (hash pwd: $(printf '%s' "$STAT_PWD_1" | sha256sum | cut -c1-10))"
 
-# 5. Esperar primeras inserciones de Spring Boot en connection_audit_log
+# 6. Esperar primeras inserciones de Spring Boot en connection_audit_log
 echo ""
-echo "[5/7] Verificando registros de Spring Boot en public.connection_audit_log..."
+echo "[6/8] Verificando registros de Spring Boot en public.connection_audit_log..."
 for i in $(seq 1 30); do
   DYN_COUNT=$(docker exec vm-db psql -U postgres -d pilotdb -tAc "SELECT COUNT(*) FROM public.connection_audit_log WHERE credential_mode='DYNAMIC';" | tr -d '\r\n')
   STAT_COUNT=$(docker exec vm-db psql -U postgres -d pilotdb -tAc "SELECT COUNT(*) FROM public.connection_audit_log WHERE credential_mode='STATIC';" | tr -d '\r\n')
@@ -99,10 +145,9 @@ STAT_PID_1=$(docker exec vm-db psql -U postgres -d pilotdb -tAc "SELECT backend_
 FIRST_DYN_USER=$(docker exec vm-db psql -U postgres -d pilotdb -tAc "SELECT db_username FROM public.connection_audit_log WHERE credential_mode='DYNAMIC' ORDER BY id ASC LIMIT 1;" | tr -d '\r\n')
 echo "  [OK] Spring Boot insertando en PostgreSQL (DYNAMIC rows=$DYN_COUNT, STATIC rows=$STAT_COUNT, primer user dinamico=$FIRST_DYN_USER, primer pid estatico=$STAT_PID_1)"
 
-# 6. Forzar rotacion del rol estatico y esperar rotacion por TTL (60s) del rol dinamico
+# 7. Forzar rotacion del rol estatico y esperar rotacion por TTL (60s) del rol dinamico
 echo ""
-echo "[6/7] Forzando rotacion de postgres-static-role y esperando rotacion por TTL (60s) de postgres-dynamic-role..."
-ROOT_TOKEN=$(docker exec vm-vault cat /vault/bootstrap/root.token | tr -d '\r\n')
+echo "[7/8] Forzando rotacion de postgres-static-role y esperando rotacion por TTL (60s) de postgres-dynamic-role..."
 docker exec -e VAULT_TOKEN="$ROOT_TOKEN" vm-vault vault write -f database/rotate-role/postgres-static-role >/dev/null
 
 ROTATED_DYN="false"
@@ -141,14 +186,20 @@ LATEST_DYN_USER=$(docker exec vm-db psql -U postgres -d pilotdb -tAc "SELECT db_
 echo "  [OK] Rotacion DINAMICA verificada: $FIRST_DYN_USER -> $LATEST_DYN_USER"
 echo "  [OK] Rotacion ESTATICA verificada: app_static_user (pg_pid inicial: $STAT_PID_1 -> pg_pid post-rotacion: $STAT_PID_NOW, nuevo hash pwd: $(printf '%s' "$STAT_PWD_NOW" | sha256sum | cut -c1-10))"
 
-# 7. Mostrar evidencia en PostgreSQL y logs de Spring Boot
+# 8. Verificar recarga en caliente (@RefreshScope) de Gitea + Vault KV v2 a traves de vm-config-server
 echo ""
-echo "[7/7] Resumen de auditoria en PostgreSQL (public.connection_audit_log):"
-docker exec vm-db psql -U postgres -d pilotdb -c "SELECT credential_mode, db_username, backend_pid, MIN(executed_at) AS first_seen, MAX(executed_at) AS last_seen, COUNT(*) AS probes FROM public.connection_audit_log GROUP BY credential_mode, db_username, backend_pid ORDER BY MIN(id);"
+echo "[8/8] Verificando commit en Gitea + rotacion Vault KV v2 + @RefreshScope en caliente (POST /api/pilot/config/refresh)..."
+BEFORE_TAG=$(curl -fsS http://localhost:18080/api/pilot/state | docker exec -i vm-app jq -r '.springCloudConfig.customTag' | tr -d '\r\n')
+REFRESH_RESP=$(curl -fsS -X POST http://localhost:18080/api/pilot/config/refresh | tr -d '\r')
+REFRESH_OK=$(echo "$REFRESH_RESP" | docker exec -i vm-app jq -r '.refreshed' | tr -d '\r\n')
+AFTER_TAG=$(echo "$REFRESH_RESP" | docker exec -i vm-app jq -r '.springCloudConfig.customTag' | tr -d '\r\n')
+AFTER_SIG=$(echo "$REFRESH_RESP" | docker exec -i vm-app jq -r '.springCloudConfig.vaultKvSignature' | tr -d '\r\n')
 
-echo ""
-echo "Sesiones activas en pg_stat_activity:"
-docker exec vm-db psql -U postgres -d pilotdb -c "SELECT pid, usename, application_name, client_addr, state FROM pg_stat_activity WHERE datname='pilotdb' AND usename <> 'postgres';"
+if [ "$REFRESH_OK" != "true" ] || [ "$BEFORE_TAG" = "$AFTER_TAG" ]; then
+  echo "ERROR: Fallo al refrescar propiedades de Spring Cloud Config en caliente: $REFRESH_RESP"
+  exit 1
+fi
+echo "  [OK] @RefreshScope recargado sin reiniciar vm-app: tag $BEFORE_TAG -> $AFTER_TAG | Vault KV Signature: $AFTER_SIG"
 
 echo ""
 echo "=================================================================="

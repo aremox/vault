@@ -11,15 +11,19 @@
     let lastDynamicHash = null;
     let lastStaticHash = null;
     let lastAuditId = null;
+    let lastConfigTag = null;
 
     const paths = {
-        ansibleVault: "M 155 185 L 155 265",
-        ansibleApp: "M 280 115 L 370 115",
-        agentVault: "M 280 330 L 370 250",
-        agentFiles: "M 530 235 L 595 235",
-        vaultDb: "M 280 375 C 540 430, 740 430, 885 340",
-        appDbDyn: "M 790 165 L 885 195",
-        appDbStat: "M 790 285 L 885 265"
+        ansibleVault: "M 155 170 L 155 235",
+        ansibleApp: "M 280 110 L 370 110",
+        agentVault: "M 280 300 L 370 230",
+        agentFiles: "M 530 220 L 595 220",
+        vaultDb: "M 280 345 C 540 395, 740 395, 885 320",
+        appDbDyn: "M 790 155 L 885 180",
+        appDbStat: "M 790 275 L 885 255",
+        gitConfig: "M 280 480 L 370 480",
+        vaultConfig: "M 155 375 C 155 440, 290 445, 370 455",
+        configApp: "M 675 415 L 675 370"
     };
 
     function maskSecret(val) {
@@ -184,9 +188,44 @@
             }
             lastStaticHash = stat.passwordHash;
 
+            // 4. Spring Cloud Config + Gitea + Vault KV v2
+            const cfg = data.springCloudConfig || {};
+            if (cfg.giteaRepoUrl) {
+                document.getElementById("cfg-repo-link").href = cfg.giteaRepoUrl;
+            }
+            document.getElementById("cfg-commit-sha").textContent = cfg.lastCommitSha || "main";
+            document.getElementById("cfg-banner").textContent = cfg.banner || "—";
+            document.getElementById("cfg-custom-tag").textContent = cfg.customTag || "git-v1";
+            document.getElementById("cfg-environment").textContent = cfg.environment || "production-lab";
+            document.getElementById("cfg-vault-kv-sig").textContent = cfg.vaultKvSignature || "—";
+            document.getElementById("cfg-refresh-count").textContent = cfg.refreshCount ?? 0;
+            document.getElementById("cfg-stage").textContent = cfg.vaultKvRotationStage || "STAGE-1";
+
+            const shortKv = (cfg.vaultKvSignature || "").length > 18
+                ? cfg.vaultKvSignature.substring(0, 16) + "..."
+                : (cfg.vaultKvSignature || "--");
+            document.getElementById("svg-cfg-tag").textContent = `tag: ${cfg.customTag || "git-v1"}`;
+            document.getElementById("svg-cfg-kv").textContent = `kv: ${shortKv}`;
+            document.getElementById("svg-cfg-sha").textContent = `commit: ${cfg.lastCommitSha || "main"}`;
+            document.getElementById("svg-cfg-refreshes").textContent = `refreshes: #${cfg.refreshCount ?? 0}`;
+            document.getElementById("svg-git-commit").textContent = `• Commit SHA: ${cfg.lastCommitSha || "main"}`;
+
+            if (lastConfigTag && cfg.customTag && cfg.customTag !== lastConfigTag) {
+                flashCard("card-spring-config");
+                highlightNode("node-git", 1800);
+                highlightNode("node-vault", 1800);
+                highlightNode("node-config-server", 1800);
+                highlightNode("node-app", 1800);
+                spawnPacketBurst(paths.gitConfig, "#f43f5e", 5, 900);
+                spawnPacketBurst(paths.vaultConfig, "#f59e0b", 5, 900);
+                spawnPacketBurst(paths.configApp, "#fb7185", 6, 1000);
+                setBanner("SPRING CLOUD REFRESH", `Commit ${cfg.lastCommitSha} en Gitea + Secreto KV en Vault recargados en caliente (@RefreshScope -> ${cfg.customTag})`);
+            }
+            lastConfigTag = cfg.customTag;
+
             renderSecretsVisibility();
 
-            // 4. Sesiones activas
+            // 5. Sesiones activas
             const sessions = data.activeSessions || [];
             const sessTbody = document.getElementById("sessions-tbody");
             sessTbody.innerHTML = sessions.map(s => {
@@ -201,7 +240,7 @@
                 </tr>`;
             }).join("") || `<tr><td colspan="5">Sin sesiones</td></tr>`;
 
-            // 5. Auditoria reciente
+            // 6. Auditoria reciente
             const audits = data.recentAudits || [];
             if (audits.length > 0) {
                 const newestId = audits[0].id;
@@ -243,12 +282,30 @@
         }
     }
 
+    async function triggerSpringCloudRefresh() {
+        setBanner("SPRING CLOUD CONFIG", "Haciendo commit en Gitea (vm-git), rotando KV en Vault y ejecutando @RefreshScope vía vm-config-server...");
+        highlightNode("node-git", 2000);
+        highlightNode("node-vault", 2000);
+        highlightNode("node-config-server", 2000);
+        spawnPacketBurst(paths.gitConfig, "#f43f5e", 5, 900);
+        spawnPacketBurst(paths.vaultConfig, "#f59e0b", 5, 900);
+        try {
+            const resp = await fetch("/api/pilot/config/refresh", { method: "POST" });
+            if (resp.ok) {
+                spawnPacketBurst(paths.configApp, "#fb7185", 6, 900);
+                await fetchPilotState();
+            }
+        } catch (e) {
+            setBanner("ERROR", `Fallo al refrescar Spring Cloud Config: ${e.message}`);
+        }
+    }
+
     function runWalkthroughAnimation() {
         const steps = [
             {
                 delay: 0,
-                tag: "PASO 1/5 · ANSIBLE -> VAULT",
-                msg: "vm-ansible (172.29.0.40) solicita role_id y genera un secret_id nuevo en vm-vault (172.29.0.10)...",
+                tag: "PASO 1/6 · ANSIBLE -> VAULT",
+                msg: "vm-ansible (172.29.0.40) solicita role_id y genera secret_id en vm-vault (172.29.0.10)...",
                 fn: () => {
                     highlightNode("node-ansible", 1600);
                     highlightNode("node-vault", 1600);
@@ -256,20 +313,35 @@
                 }
             },
             {
-                delay: 1700,
-                tag: "PASO 2/5 · ANSIBLE SSH -> VM-APP",
-                msg: "Ansible se conecta por SSH (:22) a vm-app (172.29.0.30) e inyecta /etc/vault.d/role_id y secret_id (0600)...",
+                delay: 1600,
+                tag: "PASO 2/6 · ANSIBLE SSH -> VMs",
+                msg: "Ansible inyecta por SSH (:22) /etc/vault.d/role_id y secret_id (0600) en vm-config-server y vm-app...",
                 fn: () => {
                     highlightNode("node-ansible", 1600);
+                    highlightNode("node-config-server", 1600);
                     highlightNode("node-app", 1600);
                     flashCard("card-approle");
                     spawnPacketBurst(paths.ansibleApp, "#c084fc", 6, 1100);
                 }
             },
             {
-                delay: 3400,
-                tag: "PASO 3/5 · VAULT AGENT AUTO-AUTH",
-                msg: "vault-agent se autentica con AppRole ante vm-vault y solicita leases para postgres-dynamic-role y postgres-static-role...",
+                delay: 3200,
+                tag: "PASO 3/6 · GITEA + VAULT KV -> CONFIG SERVER",
+                msg: "vm-config-server obtiene credenciales Git desde Vault, clona vault-rotation-pilot.yml de Gitea y combina secretos KV v2...",
+                fn: () => {
+                    highlightNode("node-git", 1600);
+                    highlightNode("node-vault", 1600);
+                    highlightNode("node-config-server", 1600);
+                    flashCard("card-spring-config");
+                    spawnPacketBurst(paths.gitConfig, "#f43f5e", 6, 1000);
+                    spawnPacketBurst(paths.vaultConfig, "#f59e0b", 6, 1000);
+                    spawnPacketBurst(paths.configApp, "#fb7185", 6, 1000);
+                }
+            },
+            {
+                delay: 4800,
+                tag: "PASO 4/6 · VAULT AGENT AUTO-AUTH",
+                msg: "vault-agent en vm-app se autentica con AppRole ante vm-vault y solicita leases para PostgreSQL...",
                 fn: () => {
                     highlightNode("node-app", 1600);
                     highlightNode("node-vault", 1600);
@@ -277,8 +349,8 @@
                 }
             },
             {
-                delay: 5100,
-                tag: "PASO 4/5 · VAULT -> POSTGRESQL + RENDER",
+                delay: 6400,
+                tag: "PASO 5/6 · VAULT -> POSTGRESQL + RENDER",
                 msg: "Vault crea rol efímero / rota password en vm-db (172.29.0.20) y vault-agent escribe /run/secrets/*.properties...",
                 fn: () => {
                     highlightNode("node-vault", 1600);
@@ -288,14 +360,15 @@
                 }
             },
             {
-                delay: 6800,
-                tag: "PASO 5/5 · HIKARICP HOT-RELOAD -> SQL",
-                msg: "Spring Boot detecta cambio SHA-256 en /run/secrets/, recrea pools HikariCP sin reinicio e inserta en connection_audit_log.",
+                delay: 8000,
+                tag: "PASO 6/6 · HIKARICP + @REFRESHSCOPE EN VIVO",
+                msg: "Spring Boot opera sin reinicios: recarga pools HikariCP ante rotaciones SQL y beans @RefreshScope ante commits en Gitea.",
                 fn: () => {
                     highlightNode("node-app", 1800);
                     highlightNode("node-db", 1800);
                     flashCard("card-dynamic");
                     flashCard("card-static");
+                    flashCard("card-spring-config");
                     spawnPacketBurst(paths.appDbDyn, "#06b6d4", 6, 1000);
                     spawnPacketBurst(paths.appDbStat, "#10b981", 6, 1000);
                 }
@@ -333,6 +406,14 @@
 
     document.getElementById("btn-rotate-static").addEventListener("click", () => {
         triggerRotation("/api/pilot/rotate/static", "rotación de password estática");
+    });
+
+    document.getElementById("btn-refresh-config").addEventListener("click", () => {
+        triggerSpringCloudRefresh();
+    });
+
+    document.getElementById("btn-card-refresh-config").addEventListener("click", () => {
+        triggerSpringCloudRefresh();
     });
 
     document.getElementById("btn-walkthrough").addEventListener("click", () => {
